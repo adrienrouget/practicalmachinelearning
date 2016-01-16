@@ -1,0 +1,109 @@
+---
+title: "Practical ML final assignment"
+author: "Adrien"
+date: "16 janvier 2016"
+output: html_document
+---
+
+Introduction : 
+
+We are presented with a dataset of observations related to the following experience : several people had to perform a weight lifting exercice while captors on their body recorded several measures. 
+The outcome of the exercice was a grade from A to E, depending on how well the weight lift was executed. 
+
+The goal of this assignment is to build a classifier predicting the grade and to apply it on a small test set of 20 entries. 
+
+PreProcessing : 
+
+I begin by loading both training and test sets and some useful libraries. 
+```{R}
+library(dplyr)
+library(caret)
+library(randomForest)
+training<-read.csv("training.csv")
+test<-read.csv("test.csv")
+```
+
+The training set is a data frame of 19622 observations of 160 variables (including the outcome named "Class"). 
+
+First, I try to deal with missing values. The dataset contains two kinds of missing values some labeled NAs and some labeled 1 in factor variables. 
+The code below shows that each column has either 0 or 19216 NAs.  
+```{R}
+unique(apply(training,2,function(x) sum(is.na(x))))
+```
+
+If a column contains NAs, only 406 rows (approx 2%) of that column are not NAs (those 406 rows are the one with the variable new_window=yes). We can then conclude that they won't bring any valuable information to the model.  
+
+Therefore, let's remove from the data set (training and test) those columns as well as the 7 first columns which are not measurement variables (that's a total of 74 columns removed). 
+
+```{R}
+index<-apply(training,2,function(x) sum(is.na(x))>0)
+training<-training[,!index]
+training<-training[,-(1:7)]
+test<-test[,!index]
+test<-test[,-(1:7)]
+```
+
+Some columns also have missing values that are not classified as NAs. These columns are the variables of type factor and each one contains only 406 non missing values, the rows for which the variable new_window=yes Let's also remove those columns from the training and test sets.  
+
+```{R}
+for (i in 5:13) print(sum(as.numeric(training[,i])==1))
+for (i in 36:41) print(sum(as.numeric(training[,i])==1))
+for (i in 45:53) print(sum(as.numeric(training[,i])==1))
+for (i in 67:75) print(sum(as.numeric(training[,i])==1))
+training<-training[,-c(5:13,36:41,45:53,67:75)]
+test<-test[,-c(5:13,36:41,45:53,67:75)]
+
+```
+
+
+We're now down to 53 features (including the outcome class)
+
+
+Let's look for correlated variables by finding the features that are highly correlated (correlation higher than 0.85).  
+
+```{R}
+inds<-which(cor(training[,-53])>.85 & cor(training[,-53])<1 , arr.ind=TRUE )
+rnames=row.names(cor(training[,-53]))[inds[,1]]
+colnames=colnames(cor(training[,-53]))[inds[,2]]
+rbind(rnames,colnames,cor(training[,-53])[inds])
+```
+
+We can omit the features "roll belt" and "accel belt y" as they're strongly correlated to the feature "total accel belt". 
+We can also omit "gyros forearm z" as it is strongly correlated to "gyros dumbbel z" and "accel belt x" as it is strongly correlated to "magnet belt x"
+
+```{R}
+training<-select(training,-roll_belt,-accel_belt_y,-gyros_forearm_z,-accel_belt_x)
+test<-select(test,-roll_belt,-accel_belt_y,-gyros_forearm_z,-accel_belt_x)
+```
+
+We are now down to 49 features including the outcome. 
+
+We can finish the pre processing phase by checking if any feature has a variance near zero, which is not the case here. 
+```{R}
+nearZeroVar(training[,-49])
+```
+
+
+Model Selection : 
+
+I decided to train a random forest using the randomForest library. 
+I chose the 48 remaining variables as predictors and class as the outcome. 
+I chose a random forest because it's one of the most efficient classifier and because it includes cross validation through bagging. 
+
+```{R}
+fit<-randomForest(classe~.,data=training)
+print(fit)
+```
+
+As you can see, the out-of-bag error is estimated at 0.33%, which is pretty low. 
+
+Furthermore, the accuracy on the training set is 100%
+```{R}
+sum(predict(fit,training)==training$classe)/nrow(training)
+```
+
+Finally, we can predict the outcomes for the 20 entries of the test set. 
+The accuracy of the model on the test set is 100% according to the quizz results. 
+```{R}
+predict(fit,test)
+```
